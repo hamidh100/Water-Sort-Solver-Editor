@@ -1063,6 +1063,117 @@ def replay_moves(start_state, moves):
     return states
 
 
+def _unknown_token(bottle_index, layer_index):
+    """
+    Identity of an unknown layer: the exact
+    (bottle, layer) it occupied in the start
+    board. Using a tuple that can never collide
+    with a real (r, g, b) color.
+    """
+    return (UNKNOWN_COLOR, bottle_index, layer_index)
+
+
+def _is_unknown_token(entry):
+    """
+    True when an entry of a tokenized bottle is
+    an unknown-layer identity token rather than a
+    plain color.
+    """
+    return (
+        isinstance(entry, tuple)
+        and len(entry) == 3
+        and entry[0] == UNKNOWN_COLOR
+    )
+
+
+def tokenize_state(state):
+    """
+    Returns a copy of 'state' where every "?" layer
+    is replaced by its start-board identity token.
+    Used to track where unknowns end up so painted
+    colors can be written back onto the right "?"
+    of the original start board.
+    """
+    tokenized = []
+
+    for bottle_index, bottle in enumerate(state):
+
+        colors = []
+
+        for layer_index, color in enumerate(bottle["colors"]):
+
+            if color == UNKNOWN_COLOR:
+
+                colors.append(
+                    _unknown_token(bottle_index, layer_index)
+                )
+
+            else:
+
+                colors.append(color)
+
+        tokenized.append(
+            {
+                "capacity": bottle["capacity"],
+                "colors": colors
+            }
+        )
+
+    return tokenized
+
+
+def apply_traced_moves(tokens, moves):
+    """
+    Advances a tokenized state through 'moves',
+    keeping each unknown layer's identity token
+    attached to it as it is poured around.
+
+    Mirrors apply_group_move, except any two unknown
+    layers group together regardless of their origin
+    tokens (exactly how the solver treats "?").
+    """
+
+    for source, target in moves:
+
+        source_bottle = tokens[source - 1]
+        target_bottle = tokens[target - 1]
+
+        src = source_bottle["colors"]
+        tgt = target_bottle["colors"]
+
+        if not src:
+            continue
+
+        top = src[-1]
+
+        def same_group(a, b):
+            if _is_unknown_token(a) and _is_unknown_token(b):
+                return True
+            return a == b
+
+        group_size = 0
+
+        for entry in reversed(src):
+
+            if not same_group(entry, top):
+                break
+
+            group_size += 1
+
+        room = target_bottle["capacity"] - len(tgt)
+
+        moved = 0
+
+        while (
+            moved < group_size
+            and moved < room
+            and src
+        ):
+            tgt.append(src.pop())
+
+            moved += 1
+
+
 def state_has_unknown(state):
 
     return any(
@@ -1122,10 +1233,10 @@ def state_is_solved(state):
 #     swatch clears them back to unknown
 #   - SOLVE repeats the solving process on
 #     the changed board
-#   - SAVE writes the shown position back to
-#     the editor (and the save file) and
-#     returns to it, so SOLVE can be run
-#     again from there
+#   - UPDATE colors the painted "?" tiles onto the
+#     ORIGINAL start board (step 0 stays intact,
+#     just with fewer unknowns), writes it back to
+#     the editor (and the save file) and closes
 #
 # Status text ("SOLVED!" / "NO SOLUTION")
 # sits on the right side of the header line,
@@ -1402,9 +1513,9 @@ def run_solution_window(initial_state, moves):
 
     The editor's bottles are never modified
     while stepping around and painting. Only
-    SAVE writes the shown position back into
-    the editor (and the save file) before
-    closing.
+    UPDATE writes the user's painted colors onto
+    the ORIGINAL start board (keeping its
+    layout) before closing.
     """
 
     global screen
@@ -1419,6 +1530,27 @@ def run_solution_window(initial_state, moves):
 
     # Whether anything got painted already
     painted = False
+
+    # --------------------------------------------------------
+    # Painting tracking for UPDATE
+    #
+    # UPDATE keeps the start board (step 0) and only colors
+    # the "?" tiles the user painted. Because the solution
+    # moves can pour unknown layers around, each "?" keeps
+    # an identity token pointing to the (bottle, layer) it
+    # started at. painted_unknowns maps those identities to
+    # the color the user chose, so UPDATE can write them back
+    # onto the exact start-board tiles.
+    # --------------------------------------------------------
+
+    # The very first board; UPDATE restores this layout
+    original_start = clone_state(initial_state)
+
+    # Tokenized twin of the current final board
+    tokens = tokenize_state(states[-1])
+
+    # Identity token -> color picked by the user
+    painted_unknowns = {}
 
     # Hitboxes of the "?" tiles, rebuilt every
     # frame for click handling
@@ -1595,7 +1727,7 @@ def run_solution_window(initial_state, moves):
     # never move when the palette opens.
     # Bottom row, right aligned to the window:
     #
-    #   [SAVE] [SOLVE]
+    #   [UPDATE] [SOLVE]
     # --------------------------------------------------------
 
     solve_button = pygame.Rect(
@@ -1605,7 +1737,7 @@ def run_solution_window(initial_state, moves):
         44
     )
 
-    save_button = pygame.Rect(
+    update_button = pygame.Rect(
         WIDTH - 315,
         HEIGHT - 58,
         130,
@@ -1642,6 +1774,11 @@ def run_solution_window(initial_state, moves):
 
         states = replay_moves(states[-1], new_moves)
 
+        # Advance the token twin through the new
+        # moves, keeping the "?" identities attached
+        # to the still-unknown layers.
+        apply_traced_moves(tokens, new_moves)
+
         moves.clear()
         moves.extend(new_moves)
 
@@ -1660,13 +1797,14 @@ def run_solution_window(initial_state, moves):
         update_palette_visibility()
 
     # --------------------------------------------------------
-    # Write the shown position back into the
-    # editor (and the save file), then close
-    # the viewer. The user can run SOLVE again
-    # on it from the editor at any time.
+    # UPDATE keeps the ORIGINAL start board (step 0) and
+    # only colors the "?" tiles the user painted onto it,
+    # then writes it to the editor (and the save file)
+    # and closes the viewer - so the layout stays and
+    # fewer unknowns remain for the next solve.
     # --------------------------------------------------------
 
-    def save_to_editor():
+    def update_editor():
 
         global bottles
         global selected_bottle
@@ -1680,13 +1818,31 @@ def run_solution_window(initial_state, moves):
 
         rebuilt = []
 
-        for bottle in states[-1]:
+        for bottle in original_start:
 
             new_bottle = create_bottle(bottle["capacity"])
 
             new_bottle["colors"] = list(bottle["colors"])
 
             rebuilt.append(new_bottle)
+
+        # ------------------------------------------------
+        # Color exactly the "?" tiles the user painted:
+        # every identity token maps back to a "?" of the
+        # original start board, so the layout stays and
+        # only those unknowns become colored (fewer "?"
+        # left for the next solve).
+        # ------------------------------------------------
+
+        for identity, color in painted_unknowns.items():
+
+            _, bottle_index, layer_index = identity
+
+            target_colors = rebuilt[bottle_index]["colors"]
+
+            if 0 <= layer_index < len(target_colors):
+
+                target_colors[layer_index] = color
 
         bottles[:] = rebuilt
 
@@ -1785,6 +1941,42 @@ def run_solution_window(initial_state, moves):
                     if layer_index < len(colors_list):
 
                         colors_list[layer_index] = color
+
+                        # ------------------------------------
+                        # Keep the token twin in sync and
+                        # remember which start-board "?" the
+                        # user just colored, so UPDATE can
+                        # write it back onto step 0.
+                        # ------------------------------------
+
+                        token_slot = (
+                            tokens[bottle_index]["colors"]
+                        )
+
+                        if layer_index < len(token_slot):
+
+                            entry = token_slot[layer_index]
+
+                            if _is_unknown_token(entry):
+
+                                if color == UNKNOWN_COLOR:
+
+                                    # The "?" swatch: still
+                                    # unknown, nothing to save
+                                    painted_unknowns.pop(
+                                        entry,
+                                        None
+                                    )
+
+                                else:
+
+                                    painted_unknowns[entry] = color
+
+                                    token_slot[layer_index] = color
+
+                            else:
+
+                                token_slot[layer_index] = color
 
                 painted = True
                 selected_tiles = set()
@@ -1959,14 +2151,14 @@ def run_solution_window(initial_state, moves):
                             re_solve()
 
                     # ============================================
-                    # SAVE back to the editor
+                    # UPDATE back to the editor
                     # ============================================
 
-                    elif on_last_step and save_button.collidepoint(
+                    elif on_last_step and update_button.collidepoint(
                         mouse_pos
                     ):
 
-                        save_to_editor()
+                        update_editor()
 
                     # ============================================
                     # The picker panel floating over the board:
@@ -2285,8 +2477,8 @@ def run_solution_window(initial_state, moves):
                     )
 
                 draw_button(
-                    save_button,
-                    "SAVE",
+                    update_button,
+                    "UPDATE",
                     GOLD
                 )
 

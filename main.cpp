@@ -114,10 +114,9 @@ void check_endstate(){
         for (int i = 1; i <= n; i++){
             set<string> bottlecolor;
             for (auto curcol : v[i]){
-                if (curcol != "? "){
-                    bottlecolor.insert(curcol);
-                    if (SZ(bottlecolor) > 1) return;
-                }
+                if (curcol == "? ") return;
+                bottlecolor.insert(curcol);
+                if (SZ(bottlecolor) > 1) return;
             }
             for (auto curcol : bottlecolor){
                 if (curcol == c){
