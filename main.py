@@ -65,6 +65,22 @@ BOTTLE_GAP = 35
 
 BOTTLE_WALL = 4
 
+# Empty glass rim left above the topmost liquid layer.
+# It guarantees every tile (colored or empty, full or
+# partly filled bottle) always has exactly the same height.
+BOTTLE_LIP = 8
+
+
+def bottle_height(capacity, layer_h=BOTTLE_LAYER_HEIGHT):
+    """
+    Total height (pixels) of a bottle image / rect.
+
+    The glass needs a small empty rim above the topmost
+    layer, otherwise that top cell gets eaten by the rim
+    and looks shorter than all the others.
+    """
+    return capacity * layer_h + BOTTLE_LIP
+
 # Render bottles at 4x resolution and then shrink them.
 # This is what gives the curved glass its smooth appearance.
 BOTTLE_SCALE = 4
@@ -1099,8 +1115,8 @@ def state_is_solved(state):
 #
 #   - click any tile to select it (click
 #     again to deselect)
-#   - the PALETTE button opens a picker
-#     strip on the right - the exact same
+#   - the PALETTE button opens a picker that
+#     floats over the board - the exact same
 #     panel as in the editor; click a color
 #     to paint all selected tiles, the "?"
 #     swatch clears them back to unknown
@@ -1128,10 +1144,6 @@ VIEWER_TOP = VIEWER_HEADER + 16
 # (buttons + hints)
 VIEWER_FOOTER_H = 110
 
-# Gap between the board region and the
-# palette strip, and between strip and edge
-VIEWER_PALETTE_GAP = 20
-
 
 def viewer_board_size(state, per_row, bw, gap, layer_h):
     """
@@ -1150,7 +1162,10 @@ def viewer_board_size(state, per_row, bw, gap, layer_h):
         + (per_row - 1) * gap
     )
 
-    bottom_y = VIEWER_TOP
+    # Returning sizes relative to the top of the board
+    # (not absolute screen Y). The caller compares these
+    # against the budget between VIEWER_TOP and the footer.
+    bottom_y = 0
 
     for row in range(rows):
 
@@ -1164,7 +1179,7 @@ def viewer_board_size(state, per_row, bw, gap, layer_h):
         )
 
         bottom_y += (
-            tallest * layer_h
+            bottle_height(tallest, layer_h)
             + ROW_GAP
         )
 
@@ -1199,7 +1214,7 @@ def viewer_bottle_positions(state, per_row, bw, gap, layer_h):
 
         baseline = (
             top_y
-            + tallest * layer_h
+            + bottle_height(tallest, layer_h)
         )
 
         for k in range(count):
@@ -1207,7 +1222,7 @@ def viewer_bottle_positions(state, per_row, bw, gap, layer_h):
             bottle = state[first + k]
 
             height_pixels = (
-                bottle["capacity"] * layer_h
+                bottle_height(bottle["capacity"], layer_h)
             )
 
             rects.append(
@@ -1223,7 +1238,7 @@ def viewer_bottle_positions(state, per_row, bw, gap, layer_h):
             )
 
         top_y += (
-            tallest * layer_h
+            bottle_height(tallest, layer_h)
             + ROW_GAP
         )
 
@@ -1236,11 +1251,13 @@ def plan_solution_layout(state):
     window up front.
 
     The viewer always uses the same window
-    size as the editor (WIDTH x HEIGHT). When
-    the puzzle contains "?" layers, a strip
-    for the palette panel is reserved on the
-    right from the very start, so opening the
-    palette later never resizes anything.
+    size as the editor (WIDTH x HEIGHT) and
+    lays the board out across the full window
+    width. The palette panel (only shown while
+    "?" tiles remain on the final step) floats
+    over the board exactly like the editor
+    picker, so it never steals width from the
+    bottles.
 
     Bottles use the same per-row setting and
     geometry as the editor; only when that
@@ -1250,16 +1267,9 @@ def plan_solution_layout(state):
 
     has_unknown = state_has_unknown(state)
 
-    strip_width = (
-        PANEL_WIDTH + VIEWER_PALETTE_GAP
-        if has_unknown
-        else 0
-    )
-
     avail_width = (
         WIDTH
         - 2 * VIEWER_MARGIN
-        - strip_width
     )
 
     avail_height = (
@@ -1289,29 +1299,36 @@ def plan_solution_layout(state):
 
         scale = max(scale, 0.35)
 
-        # Keep the layer height identical to the
-        # main editor. Only shrink the horizontal
-        # geometry when the solution board needs
-        # extra room (for example when the palette
-        # strip is reserved).
-        layer_h = BOTTLE_LAYER_HEIGHT
+        def board_size(lh, b, g):
+            return viewer_board_size(
+                state, per_row, b, g, lh
+            )
 
-        horizontal_scale = min(
-            avail_width / max(width, 1),
-            1.0
-        )
+        # Shrink the whole bottle uniformly (width, gap
+        # and layer height), so solution bottles keep the
+        # exact proportions of the main editor bottles
+        # instead of getting stretched out of shape.
+        lh = max(12, round(BOTTLE_LAYER_HEIGHT * scale))
+        b = max(22, round(BOTTLE_WIDTH * scale))
+        g = max(8, round(BOTTLE_GAP * scale))
 
-        bw = max(
-            22,
-            round(BOTTLE_WIDTH * horizontal_scale)
-        )
+        # The estimate above ignores the fixed row gaps,
+        # so tighten the layer height until the board
+        # actually fits.
+        while lh > 12:
+            w_, h_ = board_size(lh, b, g)
+            if w_ <= avail_width and h_ <= avail_height:
+                return b, g, lh
+            lh -= 1
 
-        gap = max(
-            8,
-            round(BOTTLE_GAP * horizontal_scale)
-        )
+        # Last resort: slim the bottle width as well.
+        while b > 22:
+            w_, h_ = board_size(lh, b, g)
+            if w_ <= avail_width and h_ <= avail_height:
+                return b, g, lh
+            b -= 1
 
-        return bw, gap, layer_h
+        return b, g, lh
 
     # Native editor sizes; only changed when
     # the board does not fit the window
@@ -1359,7 +1376,6 @@ def plan_solution_layout(state):
 
     return {
         "has_unknown": has_unknown,
-        "strip_width": strip_width,
         "per_row": per_row,
         "bw": bw,
         "gap": gap,
@@ -1367,11 +1383,12 @@ def plan_solution_layout(state):
         "body_width": body_width,
         "body_height": body_height,
 
-        # Where the palette panel waits while
-        # hidden inside its reserved strip
+        # Where the palette panel floats once it
+        # opens - the same x as in the editor but
+        # a bit higher, so it sits above the bottles
         "panel_home": [
-            WIDTH - PANEL_WIDTH - VIEWER_PALETTE_GAP,
-            16
+            panel_pos[0],
+            panel_pos[1] - 50
         ]
     }
 
@@ -1445,15 +1462,13 @@ def run_solution_window(initial_state, moves):
     layer_h = plan["layer_h"]
 
     # --------------------------------------------------------
-    # Palette strip
+    # Palette panel
     #
-    # When the puzzle contains "?" layers, a
-    # strip on the right hosts the exact same
-    # picker panel as the editor (same tabs,
-    # swatches and user-palette tools). The
-    # strip is reserved from the start, so the
-    # window size never changes; stepping to
-    # the last slide just reveals it.
+    # When the puzzle contains "?" layers, the
+    # exact same picker panel as the editor opens
+    # as a floating panel over the board (it never
+    # reserves its own column, so the bottles keep
+    # the editor's full size).
     # --------------------------------------------------------
 
     palette_open = False
@@ -1483,25 +1498,22 @@ def run_solution_window(initial_state, moves):
 
     palette_drag_offset = None
 
-    # Whether the panel was already moved into
-    # the strip during this viewer session;
+    # Whether the panel was already placed at its
+    # editor spot during this viewer session;
     # keeps a user-dragged position stable
     # across slide changes
     palette_placed = False
 
-    def place_palette_in_strip():
-        """
-        Moves the shared editor picker panel
-        into the strip on the right (once per
-        session), so it is rendered exactly
-        like in the editor.
-        """
+    def place_palette():
 
         nonlocal palette_placed
 
         if palette_placed:
             return
 
+        # Show the picker where it lives in the
+        # editor (once per session), so the viewer
+        # looks exactly like it
         panel_pos[:] = list(plan["panel_home"])
 
         palette_placed = True
@@ -1519,7 +1531,7 @@ def run_solution_window(initial_state, moves):
 
         active_rgb_field = None
 
-        place_palette_in_strip()
+        place_palette()
 
     def close_palette():
 
@@ -1686,8 +1698,8 @@ def run_solution_window(initial_state, moves):
 
     def handle_viewer_panel_click(pos):
         """
-        Click handling for the picker panel in
-        the viewer's strip.
+        Click handling for the picker panel
+        floating over the solution board.
 
         Mirrors the editor's panel handler, but
         a swatch click paints all currently
@@ -1826,7 +1838,7 @@ def run_solution_window(initial_state, moves):
     # --------------------------------------------------------
 
     # The editor picker is borrowed for the
-    # strip; remember where it lived so it can
+    # viewer; remember where it lived so it can
     # be put back when the viewer closes
     previous_panel_pos = list(panel_pos)
 
@@ -1957,11 +1969,10 @@ def run_solution_window(initial_state, moves):
                         save_to_editor()
 
                     # ============================================
-                    # The picker panel in the strip: same
-                    # controls as the editor; a swatch
-                    # paints all selected "?" tiles
-                    # ("?" clears). Empty spots grab it
-                    # for dragging.
+                    # The picker panel floating over the board:
+                    # the same controls as the editor; a swatch
+                    # paints all selected "?" tiles ("?" clears).
+                    # Empty spots grab it for dragging.
                     # ============================================
 
                     elif (
@@ -2236,9 +2247,9 @@ def run_solution_window(initial_state, moves):
             # Final step extras
             #
             # Status text (right side of the header),
-            # the picker panel in its own strip on
-            # the right while question marks are
-            # around, and the button row.
+            # the picker panel floating over the board
+            # while question marks are around, and the
+            # button row.
             # ------------------------------------------------
 
             final_has_unknown = state_has_unknown(
@@ -2250,8 +2261,8 @@ def run_solution_window(initial_state, moves):
             if palette_open:
 
                 # The exact editor picker, rendered
-                # from the shared state at its strip
-                # position
+                # from the shared state at its
+                # floating position
                 draw_color_picker()
 
             if step == last_step:
@@ -2584,7 +2595,7 @@ def get_row_top(target_row):
         tallest = get_row_tallest(first, count)
 
         top_y += (
-            tallest * BOTTLE_LAYER_HEIGHT
+            bottle_height(tallest)
             + ROW_GAP
         )
 
@@ -2606,7 +2617,7 @@ def get_row_baseline(target_row):
 
     return (
         get_row_top(target_row)
-        + tallest * BOTTLE_LAYER_HEIGHT
+        + bottle_height(tallest)
     )
 
 
@@ -2619,8 +2630,8 @@ def get_bottle_rect(index, bottle):
         BOTTLE_WIDTH + BOTTLE_GAP
     )
 
-    height_pixels = (
-        bottle["capacity"] * BOTTLE_LAYER_HEIGHT
+    height_pixels = bottle_height(
+        bottle["capacity"]
     )
 
     y = (
@@ -2657,12 +2668,17 @@ def render_bottle_image(capacity, colors, bottle_width, layer_height):
     S = BOTTLE_SCALE
 
     width = bottle_width
-    height = capacity * layer_height
+    height = bottle_height(capacity, layer_height)
 
     W = width * S
     H = height * S
 
-    wall = BOTTLE_WALL * S
+    wall = int(
+        BOTTLE_WALL
+        * S
+        * layer_height
+        / BOTTLE_LAYER_HEIGHT
+    )
 
     # Radius of the rounded bottom.
     #
@@ -2769,20 +2785,21 @@ def render_bottle_image(capacity, colors, bottle_width, layer_height):
     # liquid got clipped to the bottle shape).
     # --------------------------------------------------------
 
-    layer_height = BOTTLE_LAYER_HEIGHT * S
+    # Every cell gets exactly 'layer_height' pixels,
+    # anchored to the glass floor. The bottle surface is
+    # one BOTTLE_LIP taller than the cells, so even a
+    # completely full bottle keeps a thin empty rim at
+    # the top instead of clipping its topmost tile.
+    cell_height = layer_height * S
 
     unknown_layer_centers = []
 
     for layer_index, color in enumerate(colors):
 
-        layer_bottom = (
-            bottom
-            - layer_index * layer_height
-        )
-
         layer_top = (
-            layer_bottom
-            - layer_height
+            bottom
+            - layer_index * cell_height
+            - cell_height
         )
 
         if color == UNKNOWN_COLOR:
@@ -2790,7 +2807,7 @@ def render_bottle_image(capacity, colors, bottle_width, layer_height):
             unknown_layer_centers.append(
                 (
                     center_x,
-                    layer_top + layer_height / 2
+                    layer_top + cell_height / 2
                 )
             )
 
@@ -2803,7 +2820,7 @@ def render_bottle_image(capacity, colors, bottle_width, layer_height):
                 wall / 2,
                 layer_top,
                 W - wall,
-                layer_height + 1
+                cell_height + 1
             )
         )
 
@@ -2962,7 +2979,7 @@ def render_bottle_image(capacity, colors, bottle_width, layer_height):
     # GLASS OUTLINE
     # ========================================================
 
-    glass_width = BOTTLE_WALL * S
+    glass_width = wall
 
     # Smooth glass outline
     pygame.draw.lines(
