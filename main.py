@@ -3945,6 +3945,36 @@ while True:
                         event.unicode
                     )
 
+            # =================================================
+            # HOTKEYS (no RGB field active)
+            #
+            #   BACKSPACE  clears the selected bottle's colors
+            #   DELETE     removes the selected bottle; if no
+            #              bottle is selected it removes the
+            #              selected color - but only while on
+            #              the user's own palette tab (the
+            #              built-in colors can not be edited)
+            # =================================================
+
+            else:
+
+                if event.key == pygame.K_BACKSPACE:
+
+                    clear_selected_bottle()
+
+                elif event.key == pygame.K_DELETE:
+
+                    if selected_bottle is not None:
+
+                        remove_bottle()
+
+                    elif (
+                        selected_color is not None
+                        and active_palette == "user"
+                    ):
+
+                        remove_color_from_user_palette()
+
         # =====================================================
         # MOUSE MOTION: DRAG THE PICKER PANEL
         # =====================================================
