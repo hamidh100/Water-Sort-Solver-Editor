@@ -1557,6 +1557,8 @@ def run_solution_window(initial_state, moves):
     global screen
     global active_rgb_field
 
+    clear_picker_selection()
+
     states = replay_moves(initial_state, moves)
 
     step = 0
@@ -2692,6 +2694,8 @@ def run_solution_window(initial_state, moves):
 
         panel_pos[:] = previous_panel_pos
 
+        clear_picker_selection()
+
         screen = pygame.display.set_mode((WIDTH, HEIGHT))
 
         pygame.display.set_caption("Water Sort Bottle Editor")
@@ -2700,6 +2704,19 @@ def run_solution_window(initial_state, moves):
 # ============================================================
 # COLOR PICKER LOGIC
 # ============================================================
+
+def clear_picker_selection():
+    """
+    Clears the active swatch and any RGB
+    input focus in the shared color picker.
+    """
+
+    global selected_color
+    global active_rgb_field
+
+    selected_color = None
+    active_rgb_field = None
+
 
 def add_color_layer(bottle, color):
     """
