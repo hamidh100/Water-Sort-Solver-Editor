@@ -1598,7 +1598,17 @@ def run_solution_window(initial_state, moves):
             and state_has_unknown(states[-1])
         )
 
-    def refresh_verdict():
+    def refresh_verdict(*, from_fresh_solve=False):
+        """
+        Recompute the header verdict from the
+        current final board.
+
+        from_fresh_solve is True right after
+        SOLVE runs again; stale painted_unknowns
+        from an earlier coloring pass must not
+        keep the coloring UI alive when the new
+        attempt failed.
+        """
 
         nonlocal solve_verdict
 
@@ -1607,7 +1617,8 @@ def run_solution_window(initial_state, moves):
         elif state_has_unknown_at_top(states[-1]):
             solve_verdict = "none"
         elif (
-            state_has_unknown(states[-1])
+            not from_fresh_solve
+            and state_has_unknown(states[-1])
             and (painted or painted_unknowns)
         ):
             # A top "?" was already colored, but more
@@ -1864,7 +1875,7 @@ def run_solution_window(initial_state, moves):
         selected_tiles = set()
 
         # The verdict now describes this solve
-        refresh_verdict()
+        refresh_verdict(from_fresh_solve=True)
 
         # A fresh solution may or may not still
         # contain question marks
