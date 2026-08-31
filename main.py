@@ -1612,6 +1612,53 @@ def run_solution_window(initial_state, moves):
 
     set_viewer_window_done = False
 
+    # --------------------------------------------------------
+    # Key hold / auto-repeat for stepping:
+    #
+    # Holding RIGHT/LEFT (etc.) advances the
+    # steps one after another. The held key
+    # fires immediately once, then after a
+    # short delay repeats at a fixed rate -
+    # the classic OS keyboard-repeat feel.
+    # --------------------------------------------------------
+
+    STEP_REPEAT_DELAY_MS = 350   # hold this long before repeating starts
+
+    STEP_REPEAT_INTERVAL_MS = 90 # time between repeated steps
+
+    held_step_keys = []          # held step keys, most recent last
+
+    next_step_repeat_ms = 0      # when the next repeat fires
+
+    def handle_step_key(key):
+        """
+        Applies one stepping action for a
+        just-pressed or repeated key. Returns
+        True when the key was a step key.
+        """
+
+        nonlocal step
+
+        if key in (
+            pygame.K_RIGHT,
+            pygame.K_DOWN,
+            pygame.K_RETURN,
+            pygame.K_KP_ENTER,
+            pygame.K_SPACE
+        ):
+            step = min(step + 1, last_step)
+            return True
+
+        if key in (
+            pygame.K_LEFT,
+            pygame.K_UP,
+            pygame.K_BACKSPACE
+        ):
+            step = max(step - 1, 0)
+            return True
+
+        return False
+
     def set_viewer_window():
         """
         Creates the viewer window once - fixed
@@ -2104,27 +2151,35 @@ def run_solution_window(initial_state, moves):
 
                     else:
 
-                        if event.key in (
-                            pygame.K_RIGHT,
-                            pygame.K_DOWN,
-                            pygame.K_RETURN,
-                            pygame.K_KP_ENTER,
-                            pygame.K_SPACE
-                        ):
-                            step = min(step + 1, last_step)
+                        # ----------------------------------------
+                        # Stepping with key-hold support:
+                        # a step key fires immediately, then
+                        # repeats while held (handled in the
+                        # loop below)
+                        # ----------------------------------------
 
-                        elif event.key in (
-                            pygame.K_LEFT,
-                            pygame.K_UP,
-                            pygame.K_BACKSPACE
-                        ):
-                            step = max(step - 1, 0)
+                        if handle_step_key(event.key):
+
+                            if event.key in held_step_keys:
+                                held_step_keys.remove(event.key)
+                            else:
+                                next_step_repeat_ms = (
+                                    pygame.time.get_ticks()
+                                    + STEP_REPEAT_DELAY_MS
+                                )
+
+                            held_step_keys.append(event.key)
 
                         elif event.key == pygame.K_HOME:
                             step = 0
 
                         elif event.key == pygame.K_END:
                             step = last_step
+
+                elif event.type == pygame.KEYUP:
+
+                    if event.key in held_step_keys:
+                        held_step_keys.remove(event.key)
 
                 elif (
                     event.type == pygame.MOUSEBUTTONDOWN
@@ -2274,6 +2329,29 @@ def run_solution_window(initial_state, moves):
                     if event.button == 1:
 
                         palette_drag_offset = None
+
+            # ==================================================
+            # KEY HOLD REPEAT
+            #
+            # While a step key is held, advance one
+            # step per interval once the initial
+            # delay has passed. Only the most
+            # recently pressed held key repeats.
+            # ==================================================
+
+            if held_step_keys:
+
+                now = pygame.time.get_ticks()
+
+                if now >= next_step_repeat_ms:
+
+                    last_step = len(states) - 1
+
+                    handle_step_key(held_step_keys[-1])
+
+                    next_step_repeat_ms = (
+                        now + STEP_REPEAT_INTERVAL_MS
+                    )
 
             # ==================================================
             # DRAW
