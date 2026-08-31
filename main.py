@@ -1311,6 +1311,28 @@ def viewer_board_size(state, per_row, bw, gap, layer_h):
     return width, bottom_y + 6
 
 
+def viewer_unknown_mark_center(rect, layer_index, layer_h):
+    """
+    Screen position of a "?" in a bottle layer,
+    matching render_bottle_image placement.
+    """
+
+    wall = int(
+        BOTTLE_WALL
+        * layer_h
+        / BOTTLE_LAYER_HEIGHT
+    )
+
+    mark_y = (
+        rect.top
+        + rect.height
+        - wall
+        - (layer_index + 0.5) * layer_h
+    )
+
+    return rect.centerx, mark_y
+
+
 def viewer_bottle_positions(state, per_row, bw, gap, layer_h):
     """
     Rect of every bottle, laid out like the
@@ -2545,12 +2567,29 @@ def run_solution_window(initial_state, moves):
                             selected_tiles
                         ):
 
+                            selection_size = 34
+
+                            selection_rect = pygame.Rect(
+                                0,
+                                0,
+                                selection_size,
+                                selection_size
+                            )
+
+                            selection_rect.center = (
+                                viewer_unknown_mark_center(
+                                    rect,
+                                    layer_index,
+                                    layer_h
+                                )
+                            )
+
                             pygame.draw.rect(
                                 screen,
                                 WHITE,
-                                layer_rect.inflate(-10, -8),
+                                selection_rect,
                                 width=2,
-                                border_radius=6
+                                border_radius=8
                             )
 
             # ------------------------------------------------
