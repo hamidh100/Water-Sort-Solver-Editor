@@ -157,7 +157,7 @@ void dfs(int curid){
 }
 
 int main(){
-    //ios_base::sync_with_stdio(0); cin.tie(0);
+    ios_base::sync_with_stdio(0); cin.tie(0);
     cin >> n;
     N = n;
     bool flag = 0;
