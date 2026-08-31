@@ -1182,6 +1182,20 @@ def state_has_unknown(state):
     )
 
 
+def state_has_unknown_at_top(state):
+    """
+    True when at least one bottle's topmost
+    layer is still unknown - the point where
+    the user can see and assign its color.
+    """
+
+    return any(
+        bottle["colors"]
+        and bottle["colors"][-1] == UNKNOWN_COLOR
+        for bottle in state
+    )
+
+
 def state_is_solved(state):
     """
     Same win condition as the C++ solver:
@@ -1572,16 +1586,35 @@ def run_solution_window(initial_state, moves):
 
     solve_verdict = "none"
 
+    def coloring_active():
+        """
+        The user can assign colors while unknown
+        layers remain and the last solve did not
+        end in a hard "no solution" verdict.
+        """
+
+        return (
+            solve_verdict == "none"
+            and state_has_unknown(states[-1])
+        )
+
     def refresh_verdict():
 
         nonlocal solve_verdict
 
         if state_is_solved(states[-1]):
             solve_verdict = "solved"
-        elif not state_has_unknown(states[-1]):
-            solve_verdict = "none_found"
-        else:
+        elif state_has_unknown_at_top(states[-1]):
             solve_verdict = "none"
+        elif (
+            state_has_unknown(states[-1])
+            and (painted or painted_unknowns)
+        ):
+            # A top "?" was already colored, but more
+            # unknown layers remain underneath.
+            solve_verdict = "none"
+        else:
+            solve_verdict = "none_found"
 
     # Fixed window: same size as the editor.
     plan = plan_solution_layout(initial_state)
@@ -1729,18 +1762,15 @@ def run_solution_window(initial_state, moves):
         """
         The palette belongs to the last slide:
 
-        - arriving at a final position with "?"
+        - arriving at a colorable final position
           -> the palette opens automatically
         - stepping away from the last slide, or
-          no "?" anywhere -> it closes; coming
-          back to the last slide opens it again
+          coloring is no longer active -> it closes;
+          coming back to the last slide opens it
+          again
         """
 
         nonlocal auto_opened
-
-        final_has_unknown = state_has_unknown(
-            states[-1]
-        )
 
         on_last_step = (
             step == len(states) - 1
@@ -1758,7 +1788,7 @@ def run_solution_window(initial_state, moves):
 
             return
 
-        if not final_has_unknown:
+        if not coloring_active():
 
             if palette_open:
                 close_palette()
@@ -2190,9 +2220,7 @@ def run_solution_window(initial_state, moves):
 
                     on_last_step = step == len(states) - 1
 
-                    final_unknown = state_has_unknown(
-                        states[-1]
-                    )
+                    can_color_unknowns = coloring_active()
 
                     # ============================================
                     # SOLVE AGAIN (after changing tiles)
@@ -2225,7 +2253,7 @@ def run_solution_window(initial_state, moves):
 
                     elif (
                         on_last_step
-                        and final_unknown
+                        and can_color_unknowns
                         and palette_open
                         and get_panel_rect().collidepoint(mouse_pos)
                     ):
@@ -2281,7 +2309,7 @@ def run_solution_window(initial_state, moves):
                     # colored tiles are not clickable)
                     # ====================================
 
-                    elif on_last_step and final_unknown:
+                    elif on_last_step and can_color_unknowns:
 
                         for tile_rect, tile in reversed(
                             tile_boxes
@@ -2478,7 +2506,7 @@ def run_solution_window(initial_state, moves):
                 # the tile.
                 # --------------------------------------------
 
-                if step == last_step:
+                if step == last_step and coloring_active():
 
                     colors_list = current[bottle_index]["colors"]
 
@@ -2523,9 +2551,7 @@ def run_solution_window(initial_state, moves):
             # button row.
             # ------------------------------------------------
 
-            final_has_unknown = state_has_unknown(
-                states[-1]
-            )
+            can_color_unknowns = coloring_active()
 
             draw_status_text()
 
@@ -2538,7 +2564,7 @@ def run_solution_window(initial_state, moves):
 
             if step == last_step:
 
-                if final_has_unknown:
+                if can_color_unknowns:
 
                     instruction_surface = small_font.render(
                         "Select ? tiles, then pick a color"
