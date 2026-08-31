@@ -2213,7 +2213,8 @@ def run_solution_window(initial_state, moves):
                         mouse_pos
                     ):
 
-                        update_editor()
+                        if painted_unknowns:
+                            update_editor()
 
                     # ============================================
                     # The picker panel floating over the board:
@@ -2557,7 +2558,11 @@ def run_solution_window(initial_state, moves):
                 draw_button(
                     update_button,
                     "UPDATE",
-                    GOLD
+                    GOLD if painted_unknowns else (60, 66, 65),
+                    text_color=BLACK if painted_unknowns else (
+                        130, 138, 136
+                    ),
+                    dimmed=not painted_unknowns
                 )
 
                 draw_button(
