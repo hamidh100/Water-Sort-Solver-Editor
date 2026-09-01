@@ -2,6 +2,8 @@
 
 Editor and solver for Water Sort puzzles with step-by-step solutions and hidden-color support.
 
+![Editor](demo/editor.png)
+
 ---
 
 ## The story
@@ -24,6 +26,24 @@ Hidden-color levels work like this:
 1. Solve the puzzle until a `?` reaches the top of a bottle
 2. Assign the color you see in your game
 3. **SOLVE** again from that state, or **UPDATE** to write your choices back to the editor
+
+---
+
+## Demo
+
+![Solution viewer](demo/solution-viewer.png)
+
+### Level 1008 — normal puzzle
+
+A standard level solved step by step.
+
+<video src="demo/level-1008-normal.mp4" controls width="100%"></video>
+
+### Level 1007 — hidden colors
+
+A hidden-color level, sped up 5× (2:08). The solver walks through the moves; on the final step you assign colors to revealed `?` tiles and keep going.
+
+<video src="demo/level-1007-hidden.mp4" controls width="100%"></video>
 
 ---
 
@@ -131,13 +151,8 @@ main.cpp         # DFS solver source
 solver           # compiled solver binary (built locally)
 bottles.txt      # saved puzzle state
 user_palette.txt # custom color palette
+demo/            # screenshots and demo videos
 ```
-
----
-
-## Hidden vs unknown?
-
-In the game, these are usually called **hidden colors**. In the code and puzzle files, they are stored as **`?`** (unknown until revealed). Both mean the same thing here — use *hidden* when talking to players, and `?` / *unknown* when talking about the file format.
 
 ---
 
