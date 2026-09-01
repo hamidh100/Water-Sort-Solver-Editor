@@ -37,13 +37,13 @@ Hidden-color levels work like this:
 
 A standard level solved step by step.
 
-<video src="demo/level-1008-normal.mp4" controls width="100%"></video>
+https://github.com/user-attachments/assets/757854d0-be82-4c34-8ecd-2c27fc9b2824
 
 ### Level 1007 — hidden colors
 
-A hidden-color level, sped up 5× (2:08). The solver walks through the moves; on the final step you assign colors to revealed `?` tiles and keep going.
+A hidden-color level, sped up (5×). The solver walks through the moves; on the final step you assign colors to revealed `?` tiles and keep going.
 
-<video src="demo/level-1007-hidden.mp4" controls width="100%"></video>
+https://github.com/user-attachments/assets/f858ad25-9619-4f4e-9154-9725bd490ec6
 
 ---
 
